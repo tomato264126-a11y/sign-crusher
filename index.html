@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign Crusher (正負の数・除法マスタリー)</title>
+    <style>
+        :root {
+            --plus-color: #007bff;
+            --minus-color: #dc3545;
+            --bg-color: #121212;
+            --panel-color: #1e1e1e;
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: #ffffff;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        #game-container {
+            width: 100%;
+            max-width: 450px;
+            height: 90vh;
+            background-color: var(--panel-color);
+            border-radius: 16px;
+            position: relative;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* ヘッダー情報 */
+        #header {
+            display: flex;
+            justify-content: space-between;
+            padding: 15px 20px;
+            background-color: rgba(0,0,0,0.2);
+            font-size: 1.2rem;
+            font-weight: bold;
+            z-index: 10;
+        }
+
+        #score { color: #4caf50; }
+
+        /* メインのゲームエリア */
+        #game-area {
+            flex: 1;
+            position: relative;
+            width: 100%;
+        }
+
+        /* 落ちてくるブロック */
+        .block {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90px;
+            background: #2a2a2a;
+            border: 3px solid #444;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 10px 0;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+
+        .symbol {
+            font-size: 2.2rem;
+            font-weight: bold;
+            line-height: 1;
+        }
+
+        .divider {
+            width: 60%;
+            height: 3px;
+            background-color: #666;
+            margin: 6px 0;
+        }
+
+        /* 符号ごとのカラークラス */
+        .plus-text { color: var(--plus-color); text-shadow: 0 0 10px rgba(0,123,255,0.5); }
+        .minus-text { color: var(--minus-color); text-shadow: 0 0 10px rgba(220,53,69,0.5); }
+
+        /* 判定判定ライン */
+        #judge-line {
+            position: absolute;
+            bottom: 120px;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, transparent, #ffeb3b, transparent);
+            box-shadow: 0 0 10px #ffeb3b;
+        }
+
+        /* 操作ボタンエリア */
+        #controls {
+            height: 110px;
+            display: flex;
+            background-color: rgba(0,0,0,0.3);
+            padding: 15px;
+            gap: 15px;
+            z-index: 10;
+        }
+
+        .btn {
+            flex: 1;
+            border: none;
+            border-radius: 12px;
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: white;
+            cursor: pointer;
+            transition: transform 0.1s, filter 0.1s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+
+        .btn:active {
+            transform: scale(0.95);
+        }
+
+        #btn-minus { background-color: var(--minus-color); }
+        #btn-plus { background-color: var(--plus-color); }
+
+        /* キーヒント */
+        .key-hint {
+            font-size: 0.8rem;
+            display: block;
+            opacity: 0.6;
+            margin-top: -5px;
+        }
+
+        /* スタート・オーバー画面 */
+        .screen {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(18, 18, 18, 0.95);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .screen h1 { font-size: 2.5rem; margin-bottom: 10px; color: #ffeb3b; }
+        .screen p { font-size: 1.1rem; color: #ccc; margin-bottom: 30px; line-height: 1.6; }
+        
+        .start-btn {
+            padding: 15px 40px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            background-color: #4caf50;
+            color: white;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(76,175,80,0.4);
+        }
+
+        .start-btn:hover { background-color: #45a049; }
+
+        .hidden { display: none !important; }
+
+        /* エフェクト用アニメーション */
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-10px); }
+            40%, 80% { transform: translateX(10px); }
+        }
+        .shake { animation: shake 0.3s ease-in-out; }
+
+        @keyframes flash-green {
+            0% { background-color: rgba(76,175,80,0.4); }
+            100% { background-color: transparent; }
+        }
+        .flash-success { animation: flash-green 0.2s ease-out; }
+
+        @keyframes flash-red {
+            0% { background-color: rgba(220,53,69,0.4); }
+            100% { background-color: transparent; }
+        }
+        .flash-fail { animation: flash-red 0.3s ease-out; }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <div id="header">
+            <div id="score">SCORE: 0</div>
+            <div id="life">❤❤❤</div>
+        </div>
+
+        <div id="game-area">
+            <div id="judge-line"></div>
+            </div>
+
+        <div id="controls">
+            <button id="btn-minus" class="btn">－<span class="key-hint">←キー</span></button>
+            <button id="btn-plus" class="btn">＋<span class="key-hint">→キー</span></button>
+        </div>
+
+        <div id="start-screen" class="screen">
+            <h1>Sign Crusher</h1>
+            <p>+−ジャッジメント！<br>落ちてくる割り算の正しい符号を、下のボタンか【←】【→】キーで撃ち抜け！<br><br><span style="color:#007bff">同符号(＋と＋ / －と－) ➔ ＋</span><br><span style="color:#dc3545">異符号(＋と－ / －と＋) ➔ －</span></p>
+            <button class="start-btn" onclick="startGame()">ゲームスタート</button>
+        </div>
+
+        <div id="gameover-screen" class="screen hidden">
+            <h1>GAME OVER</h1>
+            <p>あなたの直感スコア<br><span id="final-score" style="font-size:3rem; font-weight:bold; color:#ffeb3b;">0</span></p>
+            <button class="start-btn" onclick="startGame()">もう一度挑戦</button>
+        </div>
+    </div>
+
+    <script>
+        const gameArea = document.getElementById('game-area');
+        const scoreDisplay = document.getElementById('score');
+        const lifeDisplay = document.getElementById('life');
+        const startScreen = document.getElementById('start-screen');
+        const gameoverScreen = document.getElementById('gameover-screen');
+        const finalScoreDisplay = document.getElementById('final-score');
+        const gameContainer = document.getElementById('game-container');
+
+        let score = 0;
+        let lives = 3;
+        let speed = 2; // 初期落下速度
+        let gameActive = false;
+        let currentBlock = null;
+        let animationFrameId = null;
+
+        // 音の代わりのバイブレーション/フラッシュ演出用
+        function triggerFeedback(type) {
+            gameArea.classList.remove('flash-success', 'flash-fail');
+            gameContainer.classList.remove('shake');
+            void gameArea.offsetWidth; // リフローを起こしてアニメーションをリセット
+            
+            if (type === 'success') {
+                gameArea.classList.add('flash-success');
+            } else if (type === 'fail') {
+                gameArea.classList.add('flash-fail');
+                gameContainer.classList.add('shake');
+            }
+        }
+
+        // ゲームの開始・初期化
+        function startGame() {
+            score = 0;
+            lives = 3;
+            speed = 2.5;
+            gameActive = true;
+            scoreDisplay.textContent = `SCORE: ${score}`;
+            updateLivesDisplay();
+            
+            startScreen.classList.add('hidden');
+            gameoverScreen.classList.add('hidden');
+            
+            if (currentBlock) currentBlock.remove();
+            spawnBlock();
+            updateGame();
+        }
+
+        // ライフ表示更新
+        function updateLivesDisplay() {
+            lifeDisplay.textContent = '❤'.repeat(lives) + '🖤'.repeat(3 - lives);
+        }
+
+        // ブロックの生成
+        function spawnBlock() {
+            if (!gameActive) return;
+
+            // 0: ＋, 1: －
+            const topSign = Math.floor(Math.random() * 2);
+            const bottomSign = Math.floor(Math.random() * 2);
+            
+            // 正解の判定 (同符号ならプラス(1), 異符号ならマイナス(0))
+            const correctSign = (topSign === bottomSign) ? 'plus' : 'minus';
+
+            const block = document.createElement('div');
+            block.className = 'block';
+            block.style.top = '-120px'; // 画面上部外からスタート
+            
+            const topElement = document.createElement('div');
+            topElement.className = `symbol ${topSign === 0 ? 'plus-text' : 'minus-text'}`;
+            topElement.textContent = topSign === 0 ? '＋' : '－';
+
+            const divider = document.createElement('div');
+            divider.className = 'divider';
+
+            const bottomElement = document.createElement('div');
+            bottomElement.className = `symbol ${bottomSign === 0 ? 'plus-text' : 'minus-text'}`;
+            bottomElement.textContent = bottomSign === 0 ? '＋' : '－';
+
+            block.appendChild(topElement);
+            block.appendChild(divider);
+            block.appendChild(bottomElement);
+            
+            gameArea.appendChild(block);
+            
+            currentBlock = {
+                element: block,
+                y: -120,
+                answer: correctSign
+            };
+        }
+
+        // メインゲームループ
+        function updateGame() {
+            if (!gameActive) return;
+
+            if (currentBlock) {
+                currentBlock.y += speed;
+                currentBlock.element.style.top = currentBlock.y + 'px';
+
+                // 判定ライン（ボトム付近）を超えて最下部まで見逃してしまった場合
+                const areaHeight = gameArea.clientHeight;
+                if (currentBlock.y > areaHeight - 40) {
+                    handleWrongAnswer();
+                }
+            }
+
+            animationFrameId = requestAnimationFrame(updateGame);
+        }
+
+        // プレイヤーの回答処理
+        function playerAnswer(choice) {
+            if (!gameActive || !currentBlock) return;
+
+            // 判定ライン付近にある時だけ回答を受け付ける（ズル防止：上すぎる時はミスにする、またはスルー）
+            // 今回は直感ゲームなので、いつ押しても判定し、合っていれば即破壊に。
+            if (choice === currentBlock.answer) {
+                handleCorrectAnswer();
+            } else {
+                handleWrongAnswer();
+            }
+        }
+
+        function handleCorrectAnswer() {
+            score += 10;
+            scoreDisplay.textContent = `SCORE: ${score}`;
+            triggerFeedback('success');
+            
+            // レベルアップ（速度上昇）
+            speed += 0.15;
+            
+            currentBlock.element.remove();
+            currentBlock = null;
+            spawnBlock();
+        }
+
+        function handleWrongAnswer() {
+            lives--;
+            updateLivesDisplay();
+            triggerFeedback('fail');
+            
+            currentBlock.element.remove();
+            currentBlock = null;
+
+            if (lives <= 0) {
+                gameOver();
+            } else {
+                spawnBlock();
+            }
+        }
+
+        // ゲームオーバー
+        function gameOver() {
+            gameActive = false;
+            cancelAnimationFrame(animationFrameId);
+            finalScoreDisplay.textContent = score;
+            gameoverScreen.classList.remove('hidden');
+        }
+
+        // キーボード操作の受付
+        document.addEventListener('keydown', (e) => {
+            if (!gameActive) return;
+            if (e.key === 'ArrowLeft') {
+                playerAnswer('minus');
+            } else if (e.key === 'ArrowRight') {
+                playerAnswer('plus');
+            }
+        });
+
+        // 画面ボタンの操作受付
+        document.getElementById('btn-minus').addEventListener('click', () => playerAnswer('minus'));
+        document.getElementById('btn-plus').addEventListener('click', () => playerAnswer('plus'));
+    </script>
+</body>
+</html>
