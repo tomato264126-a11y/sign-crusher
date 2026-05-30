@@ -44,7 +44,6 @@
             overflow: hidden;
         }
 
-        /* ヘッダー情報 */
         #header {
             display: flex;
             justify-content: space-between;
@@ -57,14 +56,12 @@
 
         #score { color: #4caf50; }
 
-        /* メインのゲームエリア */
         #game-area {
             flex: 1;
             position: relative;
             width: 100%;
         }
 
-        /* 落ちてくるブロック */
         .block {
             position: absolute;
             left: 50%;
@@ -94,11 +91,9 @@
             margin: 6px 0;
         }
 
-        /* 符号ごとのカラークラス */
         .plus-text { color: var(--plus-color); text-shadow: 0 0 10px rgba(0,123,255,0.5); }
         .minus-text { color: var(--minus-color); text-shadow: 0 0 10px rgba(220,53,69,0.5); }
 
-        /* 判定判定ライン */
         #judge-line {
             position: absolute;
             bottom: 120px;
@@ -108,7 +103,6 @@
             box-shadow: 0 0 10px #ffeb3b;
         }
 
-        /* 操作ボタンエリア */
         #controls {
             height: 110px;
             display: flex;
@@ -140,7 +134,6 @@
         #btn-minus { background-color: var(--minus-color); }
         #btn-plus { background-color: var(--plus-color); }
 
-        /* キーヒント */
         .key-hint {
             font-size: 0.8rem;
             display: block;
@@ -148,7 +141,6 @@
             margin-top: -5px;
         }
 
-        /* スタート・オーバー画面 */
         .screen {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -181,7 +173,6 @@
 
         .hidden { display: none !important; }
 
-        /* エフェクト用アニメーション */
         @keyframes shake {
             0%, 100% { transform: translateX(0); }
             20%, 60% { transform: translateX(-10px); }
@@ -212,7 +203,7 @@
 
         <div id="game-area">
             <div id="judge-line"></div>
-            </div>
+        </div>
 
         <div id="controls">
             <button id="btn-minus" class="btn">－<span class="key-hint">←キー</span></button>
@@ -221,7 +212,7 @@
 
         <div id="start-screen" class="screen">
             <h1>Sign Crusher</h1>
-            <p>サインクラッシャー<br>落ちてくる割り算の正しい符号を、下のボタンか【←】【→】キーで撃ち抜け！<br><br><span style="color:#007bff">同符号(＋と＋ / －と－) ➔ ＋</span><br><span style="color:#dc3545">異符号(＋と－ / －と＋) ➔ －</span></p>
+            <p>数字なし符号判定トレーニング！<br>落ちてくる割り算の正しい符号を、下のボタンか【←】【→】キーで撃ち抜け！<br><br><span style="color:#007bff">同符号(＋と＋ / －と－) ➔ ＋</span><br><span style="color:#dc3545">異符号(＋と－ / －と＋) ➔ －</span></p>
             <button class="start-btn" onclick="startGame()">ゲームスタート</button>
         </div>
 
@@ -243,30 +234,106 @@
 
         let score = 0;
         let lives = 3;
-        let speed = 2; // 初期落下速度
+        let speed = 1.0; // 初心者向け：初期速度を2.5から1.0に大幅にスローダウン
         let gameActive = false;
         let currentBlock = null;
         let animationFrameId = null;
 
-        // 音の代わりのバイブレーション/フラッシュ演出用
-        function triggerFeedback(type) {
-            gameArea.classList.remove('flash-success', 'flash-fail');
-            gameContainer.classList.remove('shake');
-            void gameArea.offsetWidth; // リフローを起こしてアニメーションをリセット
-            
-            if (type === 'success') {
-                gameArea.classList.add('flash-success');
-            } else if (type === 'fail') {
-                gameArea.classList.add('flash-fail');
-                gameContainer.classList.add('shake');
+        // --- オーディオ生成エンジン (Web Audio API) ---
+        let audioCtx = null;
+        let bgmInterval = null;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             }
         }
 
-        // ゲームの開始・初期化
+        // 効果音（正解・不正解）
+        function playSound(type) {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            if (type === 'success') {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5 (ド)
+                osc.frequency.setValueAtTime(659.25, audioCtx.currentTime + 0.08); // E5 (ミ)
+                osc.frequency.setValueAtTime(783.99, audioCtx.currentTime + 0.16); // G5 (ソ)
+                gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.3);
+            } else if (type === 'fail') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(196.00, audioCtx.currentTime); // G3
+                osc.frequency.linearRampToValueAtTime(130.81, audioCtx.currentTime + 0.2); // C3へ下降
+                gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.3);
+            }
+        }
+
+        // BGMループ再生（シンプルなレトロパターン）
+        function startBGM() {
+            if (!audioCtx) return;
+            stopBGM();
+
+            let step = 0;
+            // 楽しげで少しレトロなベースライン調のBGM
+            const notes = [261.63, 329.63, 392.00, 329.63, 293.66, 349.23, 440.00, 349.23]; // C-E-G-E-D-F-A-F
+
+            bgmInterval = setInterval(() => {
+                if (!gameActive) return;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc.type = 'square'; // レトロなピコピコ感
+                osc.frequency.setValueAtTime(notes[step % notes.length] / 2, audioCtx.currentTime); // 1オクターブ下げる
+
+                gain.gain.setValueAtTime(0.05, audioCtx.currentTime); // BGMなので音量は控えめ
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.25);
+
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.25);
+                step++;
+            }, 250); // テンポ設定
+        }
+
+        function stopBGM() {
+            if (bgmInterval) {
+                clearInterval(bgmInterval);
+                bgmInterval = null;
+            }
+        }
+        // ---------------------------------------------
+
+        function triggerFeedback(type) {
+            gameArea.classList.remove('flash-success', 'flash-fail');
+            gameContainer.classList.remove('shake');
+            void gameArea.offsetWidth;
+            
+            if (type === 'success') {
+                gameArea.classList.add('flash-success');
+                playSound('success');
+            } else if (type === 'fail') {
+                gameArea.classList.add('flash-fail');
+                gameContainer.classList.add('shake');
+                playSound('fail');
+            }
+        }
+
         function startGame() {
+            initAudio(); // ユーザーのクリック操作を契機にオーディオを許可
+            
             score = 0;
             lives = 3;
-            speed = 2.5;
+            speed = 1.0; // 開始時の速度を初心者向けにゆっくりに
             gameActive = true;
             scoreDisplay.textContent = `SCORE: ${score}`;
             updateLivesDisplay();
@@ -276,28 +343,24 @@
             
             if (currentBlock) currentBlock.remove();
             spawnBlock();
+            startBGM(); // BGM開始
             updateGame();
         }
 
-        // ライフ表示更新
         function updateLivesDisplay() {
             lifeDisplay.textContent = '❤'.repeat(lives) + '🖤'.repeat(3 - lives);
         }
 
-        // ブロックの生成
         function spawnBlock() {
             if (!gameActive) return;
 
-            // 0: ＋, 1: －
             const topSign = Math.floor(Math.random() * 2);
             const bottomSign = Math.floor(Math.random() * 2);
-            
-            // 正解の判定 (同符号ならプラス(1), 異符号ならマイナス(0))
             const correctSign = (topSign === bottomSign) ? 'plus' : 'minus';
 
             const block = document.createElement('div');
             block.className = 'block';
-            block.style.top = '-120px'; // 画面上部外からスタート
+            block.style.top = '-120px';
             
             const topElement = document.createElement('div');
             topElement.className = `symbol ${topSign === 0 ? 'plus-text' : 'minus-text'}`;
@@ -323,7 +386,6 @@
             };
         }
 
-        // メインゲームループ
         function updateGame() {
             if (!gameActive) return;
 
@@ -331,7 +393,6 @@
                 currentBlock.y += speed;
                 currentBlock.element.style.top = currentBlock.y + 'px';
 
-                // 判定ライン（ボトム付近）を超えて最下部まで見逃してしまった場合
                 const areaHeight = gameArea.clientHeight;
                 if (currentBlock.y > areaHeight - 40) {
                     handleWrongAnswer();
@@ -341,12 +402,9 @@
             animationFrameId = requestAnimationFrame(updateGame);
         }
 
-        // プレイヤーの回答処理
         function playerAnswer(choice) {
             if (!gameActive || !currentBlock) return;
 
-            // 判定ライン付近にある時だけ回答を受け付ける（ズル防止：上すぎる時はミスにする、またはスルー）
-            // 今回は直感ゲームなので、いつ押しても判定し、合っていれば即破壊に。
             if (choice === currentBlock.answer) {
                 handleCorrectAnswer();
             } else {
@@ -359,8 +417,8 @@
             scoreDisplay.textContent = `SCORE: ${score}`;
             triggerFeedback('success');
             
-            // レベルアップ（速度上昇）
-            speed += 0.15;
+            // 初心者向け：加速の度合いもマイルド(0.15 ➔ 0.08)に調整
+            speed += 0.08;
             
             currentBlock.element.remove();
             currentBlock = null;
@@ -382,15 +440,14 @@
             }
         }
 
-        // ゲームオーバー
         function gameOver() {
             gameActive = false;
+            stopBGM(); // BGM停止
             cancelAnimationFrame(animationFrameId);
             finalScoreDisplay.textContent = score;
             gameoverScreen.classList.remove('hidden');
         }
 
-        // キーボード操作の受付
         document.addEventListener('keydown', (e) => {
             if (!gameActive) return;
             if (e.key === 'ArrowLeft') {
@@ -400,7 +457,6 @@
             }
         });
 
-        // 画面ボタンの操作受付
         document.getElementById('btn-minus').addEventListener('click', () => playerAnswer('minus'));
         document.getElementById('btn-plus').addEventListener('click', () => playerAnswer('plus'));
     </script>
